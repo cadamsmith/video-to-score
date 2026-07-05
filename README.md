@@ -7,7 +7,7 @@ screen. Playing from it means constantly pausing and scrubbing. `video-to-score`
 distinct page once and assembles them into a normal PDF you can print or read straight through.
 
 > **Scope:** the MVP handles **page-flip** videos (notation advances one static page at a time).
-> Continuous-scroll videos, YouTube/URL downloading, and full notation recognition (OMR) are out of scope.
+> Continuous-scroll videos, URL downloading, and full notation recognition (OMR) are out of scope.
 
 ## install
 
