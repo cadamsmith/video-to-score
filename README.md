@@ -1,4 +1,4 @@
-# video-to-score
+# 🎹 video-to-score
 
 Turn an MP4 video of **page-flip** sheet music into a clean, printable PDF score.
 
@@ -9,7 +9,7 @@ distinct page once and assembles them into a normal PDF you can print or read st
 > **Scope:** the MVP handles **page-flip** videos (notation advances one static page at a time).
 > Continuous-scroll videos, YouTube/URL downloading, and full notation recognition (OMR) are out of scope.
 
-## Install
+## install
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
@@ -17,7 +17,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 uv sync
 ```
 
-## Usage
+## usage
 
 ```bash
 uv run video-to-score input.mp4 -o output.pdf [--start mm:ss] [--end mm:ss]
@@ -26,9 +26,9 @@ uv run video-to-score input.mp4 -o output.pdf [--start mm:ss] [--end mm:ss]
 `--start`/`--end` skip non-notation intros/outros (title cards, talking-head intros, bumpers) —
 a quick manual step per video. Timecodes accept `ss`, `mm:ss`, or `hh:mm:ss`.
 
-### Options
+### options
 
-| Flag | Default | Description |
+| flag | default | description |
 | --- | --- | --- |
 | `-o, --output` | *(required)* | Output PDF path. |
 | `--start` / `--end` | none | Trim the notation window. |
@@ -41,14 +41,14 @@ a quick manual step per video. Timecodes accept `ss`, `mm:ss`, or `hh:mm:ss`.
 | `--no-crop` | off | Skip cropping to the notation region. |
 | `--debug [DIR]` | off | Dump the similarity signal (`signal.csv`, `signal.png`) and one frame per detected segment. |
 
-### Tuning with `--debug`
+### tuning with `--debug`
 
 `segment` is the heart of the tool. If pages are missed or split, run with `--debug` and open
 `debug/signal.png`: stable pages sit near zero, page flips are spikes, and the enter/exit thresholds
 are drawn in. Nudge `--threshold`/`--exit-threshold` so every real flip clears the line and nothing
 else does. The `debug/segments/` frames let you eyeball the detected page boundaries.
 
-## How it works
+## how it works
 
 A linear pipeline; each stage does one job and hands a simple data structure to the next:
 
@@ -64,7 +64,7 @@ MP4 -> [1] extract -> [2] segment -> [3] select -> [4] dedup -> [5] crop -> [6] 
 5. **crop** — isolate the bright notation rectangle.
 6. **assemble** — order by timestamp and stack `--rows-per-page` strips onto each portrait PDF page.
 
-## Development
+## development
 
 ```bash
 uv run pytest      # unit tests (synthetic frames per stage)
