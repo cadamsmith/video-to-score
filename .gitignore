@@ -1,0 +1,14 @@
+# Test assets (bring-your-own MP4)
+samples/
+
+# Debug output (--debug signal dumps and per-segment frames)
+debug/
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
