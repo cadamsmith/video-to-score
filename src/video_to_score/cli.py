@@ -110,43 +110,58 @@ def build_parser() -> argparse.ArgumentParser:
         description="Turn an MP4 of page-flip sheet music into a clean, printable PDF score.",
     )
     parser.add_argument("input", type=Path, help="local MP4 file of sheet music")
+    parser.add_argument("-o", "--output", type=Path, required=True, help="output PDF path")
     parser.add_argument(
-        "-o", "--output", type=Path, required=True, help="output PDF path"
-    )
-    parser.add_argument(
-        "--start", type=parse_timecode, default=None,
+        "--start",
+        type=parse_timecode,
+        default=None,
         help="skip everything before this point (ss, mm:ss, or hh:mm:ss)",
     )
     parser.add_argument(
-        "--end", type=parse_timecode, default=None,
+        "--end",
+        type=parse_timecode,
+        default=None,
         help="skip everything after this point (ss, mm:ss, or hh:mm:ss)",
     )
+    parser.add_argument("--fps", type=float, default=2.0, help="frame sampling rate (default: 2.0)")
     parser.add_argument(
-        "--fps", type=float, default=2.0, help="frame sampling rate (default: 2.0)"
-    )
-    parser.add_argument(
-        "--method", choices=["mad", "hist"], default="mad",
+        "--method",
+        choices=["mad", "hist"],
+        default="mad",
         help="frame-similarity signal (default: mad)",
     )
     parser.add_argument(
-        "--threshold", dest="enter_threshold", type=float, default=0.06,
+        "--threshold",
+        dest="enter_threshold",
+        type=float,
+        default=0.06,
         help="dissimilarity at/above which a page transition begins (default: 0.06)",
     )
     parser.add_argument(
-        "--exit-threshold", type=float, default=0.03,
+        "--exit-threshold",
+        type=float,
+        default=0.03,
         help="dissimilarity at/below which a transition ends (hysteresis; default: 0.03)",
     )
     parser.add_argument(
-        "--min-stable-sec", type=float, default=1.0,
+        "--min-stable-sec",
+        type=float,
+        default=1.0,
         help="minimum seconds a page must hold to count as a page (default: 1.0)",
     )
     parser.add_argument("--no-crop", action="store_true", help="skip the crop stage")
     parser.add_argument(
-        "--rows-per-page", type=int, default=3,
+        "--rows-per-page",
+        type=int,
+        default=3,
         help="number of captured strips stacked per portrait PDF page (default: 3)",
     )
     parser.add_argument(
-        "--debug", nargs="?", const="debug", default=None, metavar="DIR",
+        "--debug",
+        nargs="?",
+        const="debug",
+        default=None,
+        metavar="DIR",
         help="dump similarity signal and per-segment frames (default dir: ./debug)",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress logs")
