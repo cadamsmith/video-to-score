@@ -55,7 +55,7 @@ def run(
     exit_threshold: float = 0.03,
     min_stable_sec: float = 1.0,
     no_crop: bool = False,
-    rows_per_page: int = 3,
+    max_rows_per_page: int | None = None,
     debug_dir: str | Path | None = None,
     verbose: bool = True,
 ) -> Path:
@@ -112,8 +112,9 @@ def run(
         log("[5/6] crop: isolating the notation region")
         pages = crop_pages(pages)
 
-    log(f"[6/6] assemble: writing {output_path} ({rows_per_page} strips/page, portrait)")
-    return assemble_pdf(pages, output_path, rows_per_page=rows_per_page)
+    cap = "auto" if max_rows_per_page is None else f"<={max_rows_per_page}"
+    log(f"[6/6] assemble: writing {output_path} ({cap} strips/page, portrait)")
+    return assemble_pdf(pages, output_path, max_rows_per_page=max_rows_per_page)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -163,10 +164,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--no-crop", action="store_true", help="skip the crop stage")
     parser.add_argument(
-        "--rows-per-page",
+        "--max-rows-per-page",
         type=int,
-        default=3,
-        help="number of captured strips stacked per portrait PDF page (default: 3)",
+        default=None,
+        help="cap on strips stacked per portrait PDF page (default: auto-fit by resolution)",
     )
     parser.add_argument(
         "--debug",
@@ -197,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             exit_threshold=args.exit_threshold,
             min_stable_sec=args.min_stable_sec,
             no_crop=args.no_crop,
-            rows_per_page=args.rows_per_page,
+            max_rows_per_page=args.max_rows_per_page,
             debug_dir=args.debug,
             verbose=not args.quiet,
         )

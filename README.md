@@ -37,7 +37,7 @@ a quick manual step per video. Timecodes accept `ss`, `mm:ss`, or `hh:mm:ss`.
 | `--threshold` | `0.045` | Dissimilarity at/above which a page transition begins. |
 | `--exit-threshold` | `0.03` | Dissimilarity at/below which a transition ends (hysteresis). |
 | `--min-stable-sec` | `1.0` | Minimum seconds a page must hold to count as a page. |
-| `--rows-per-page` | `3` | Number of captured strips stacked per portrait PDF page. |
+| `--max-rows-per-page` | auto | Cap on strips stacked per portrait PDF page. Default fits as many as the strip resolution allows. |
 | `--no-crop` | off | Skip cropping to the notation region. |
 | `--debug [DIR]` | off | Dump the similarity signal (`signal.csv`, `signal.png`) and one frame per detected segment. |
 
@@ -67,7 +67,8 @@ MP4 -> [1] extract -> [2] segment -> [3] select -> [4] dedup -> [5] crop -> [6] 
 3. **select** — pick the sharpest frame per segment (variance of the Laplacian).
 4. **dedup** — drop repeated pages (perceptual hash + SSIM confirmation).
 5. **crop** — isolate the bright notation rectangle.
-6. **assemble** — order by timestamp and stack `--rows-per-page` strips onto each portrait PDF page.
+6. **assemble** — order by timestamp and pack as many strips as fit onto each portrait PDF page,
+   sized by their resolution (`--max-rows-per-page` caps the count).
 
 ## development
 

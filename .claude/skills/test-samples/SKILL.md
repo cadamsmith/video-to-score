@@ -18,6 +18,11 @@ Output is one row per sample: `PASS`/`FAIL`, `expected` vs `got` distinct pages,
 raw `segs` (segment) count, and notes (dedup drops, suspected missed flips). Exit
 status is non-zero if any sample fails.
 
+Each sample's assembled score is also written to `samples/<name>.pdf` (same name as
+the MP4, `.pdf` extension) so you can eyeball the actual output. PDF assembly runs
+off the page-count path, so a PDF-write failure is reported as a note rather than
+failing the sample.
+
 ## Add a sample
 
 1. Copy the MP4 into `samples/`.
@@ -37,8 +42,9 @@ status is non-zero if any sample fails.
 
 ## Reading a FAIL
 
-The harness stops after `dedup` — the last stage that changes the page count
-(`crop`/`assemble` are 1:1 / layout-only). Use the extra columns to tune:
+`dedup` is the last stage that changes the page count (`crop`/`assemble` are 1:1 /
+layout-only), so the `got` count reflects the pipeline through `dedup`. Use the
+extra columns to tune:
 
 - **got < expected** — pages are being merged. A missed flip (see the "suspected
   missed flip" note) means two pages collapsed into one; lower `threshold` or raise

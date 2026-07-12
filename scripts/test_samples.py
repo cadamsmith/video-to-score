@@ -6,11 +6,11 @@ in `samples/manifest.toml`, then:
 
     uv run python scripts/test_samples.py
 
-For every sample it runs the real pipeline in-process up to the last stage that
-can change the page count (extract -> segment -> select -> dedup), then compares
-the number of distinct pages against the manifest's `expected_pages`. It also
-reports the raw segment count and any suspected missed page flips, so a FAIL
-doubles as a tuning signal:
+For every sample it runs the real pipeline in-process (extract -> segment ->
+select -> dedup -> crop -> assemble), writes the assembled score to
+`samples/<name>.pdf` next to the MP4, then compares the number of distinct pages
+against the manifest's `expected_pages`. It also reports the raw segment count and
+any suspected missed page flips, so a FAIL doubles as a tuning signal:
 
   * distinct == segments : dedup found nothing to drop
   * distinct <  segments : dedup collapsed repeats (revisited pages, loops)
@@ -31,7 +31,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from video_to_score.assemble import assemble_pdf  # noqa: E402
 from video_to_score.cli import parse_timecode  # noqa: E402
+from video_to_score.crop import crop_pages  # noqa: E402
 from video_to_score.dedup import dedup_pages  # noqa: E402
 from video_to_score.extract import extract_frames  # noqa: E402
 from video_to_score.segment import segment_frames  # noqa: E402
@@ -54,6 +56,7 @@ class Result:
     segments: int
     suspected_missed: list[float]
     error: str | None = None
+    pdf_error: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -104,12 +107,22 @@ def run_sample(spec: dict) -> Result:
     except Exception as exc:  # noqa: BLE001 - report any failure per-sample, keep going
         return Result(name, spec["expected_pages"], 0, 0, [], error=str(exc))
 
+    # Write the assembled PDF next to the MP4 (same name, .pdf). Kept off the
+    # page-count path above so a PDF-write hiccup can't flip a correct-count
+    # sample to FAIL -- it's reported as a note instead.
+    pdf_error = None
+    try:
+        assemble_pdf(crop_pages(pages), path.with_suffix(".pdf"))
+    except Exception as exc:  # noqa: BLE001 - artifact failure shouldn't sink the count check
+        pdf_error = f"pdf write failed: {exc}"
+
     return Result(
         name=name,
         expected=spec["expected_pages"],
         distinct=len(pages),
         segments=len(result.segments),
         suspected_missed=list(result.suspected_missed),
+        pdf_error=pdf_error,
     )
 
 
@@ -143,6 +156,8 @@ def main() -> int:
         if r.suspected_missed:
             at = ", ".join(f"{t:.1f}s" for t in r.suspected_missed)
             notes.append(f"suspected missed flip(s) at {at}")
+        if r.pdf_error:
+            notes.append(r.pdf_error)
         print(
             f"{tag:<4} {r.name:<{width}}  {r.expected:>8} {r.distinct:>4} "
             f"{r.segments:>4}  {'; '.join(notes)}"
