@@ -70,8 +70,14 @@ def run_sample(spec: dict) -> Result:
 
     unknown = set(spec) - {"file", "expected_pages"} - _PIPELINE_KEYS - _TIMECODE_KEYS
     if unknown:
-        return Result(name, spec["expected_pages"], 0, 0, [],
-                      error=f"unknown manifest key(s): {', '.join(sorted(unknown))}")
+        return Result(
+            name,
+            spec["expected_pages"],
+            0,
+            0,
+            [],
+            error=f"unknown manifest key(s): {', '.join(sorted(unknown))}",
+        )
 
     path = SAMPLES_DIR / name
     if not path.exists():
@@ -110,8 +116,10 @@ def run_sample(spec: dict) -> Result:
 def main() -> int:
     if not MANIFEST.exists():
         print(f"no manifest at {MANIFEST}", file=sys.stderr)
-        print("Create it and add a [[sample]] block per video. See scripts/test_samples.py.",
-              file=sys.stderr)
+        print(
+            "Create it and add a [[sample]] block per video. See scripts/test_samples.py.",
+            file=sys.stderr,
+        )
         return 2
 
     samples = tomllib.loads(MANIFEST.read_text()).get("sample", [])
@@ -135,8 +143,10 @@ def main() -> int:
         if r.suspected_missed:
             at = ", ".join(f"{t:.1f}s" for t in r.suspected_missed)
             notes.append(f"suspected missed flip(s) at {at}")
-        print(f"{tag:<4} {r.name:<{width}}  {r.expected:>8} {r.distinct:>4} "
-              f"{r.segments:>4}  {'; '.join(notes)}")
+        print(
+            f"{tag:<4} {r.name:<{width}}  {r.expected:>8} {r.distinct:>4} "
+            f"{r.segments:>4}  {'; '.join(notes)}"
+        )
 
     passed = sum(r.ok for r in results)
     print("-" * (width + 32))
