@@ -34,7 +34,7 @@ a quick manual step per video. Timecodes accept `ss`, `mm:ss`, or `hh:mm:ss`.
 | `--start` / `--end` | none | Trim the notation window. |
 | `--fps` | `2.0` | Frame sampling rate. Page flips are slow, so a low rate is plenty. |
 | `--method` | `mad` | Frame-similarity signal: `mad` (mean abs difference) or `hist`. |
-| `--threshold` | `0.06` | Dissimilarity at/above which a page transition begins. |
+| `--threshold` | `0.045` | Dissimilarity at/above which a page transition begins. |
 | `--exit-threshold` | `0.03` | Dissimilarity at/below which a transition ends (hysteresis). |
 | `--min-stable-sec` | `1.0` | Minimum seconds a page must hold to count as a page. |
 | `--rows-per-page` | `3` | Number of captured strips stacked per portrait PDF page. |
@@ -47,6 +47,11 @@ a quick manual step per video. Timecodes accept `ss`, `mm:ss`, or `hh:mm:ss`.
 `debug/signal.png`: stable pages sit near zero, page flips are spikes, and the enter/exit thresholds
 are drawn in. Nudge `--threshold`/`--exit-threshold` so every real flip clears the line and nothing
 else does. The `debug/segments/` frames let you eyeball the detected page boundaries.
+
+A missed flip is silent — the two pages on either side collapse into one and only one survives, so a
+page just disappears from the PDF. To catch this, `segment` watches for a spike that lands *just
+below* `--threshold` inside an otherwise stable page and prints a `warning: possible missed page
+flip(s) at ...` (even under `--quiet`). If you see it, lower `--threshold` or raise `--fps` and re-run.
 
 ## how it works
 

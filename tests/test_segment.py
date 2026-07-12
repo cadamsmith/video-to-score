@@ -48,3 +48,25 @@ def test_no_transitions_single_segment():
     imgs = [solid(200)] * 5
     result = segment_frames(make_frames(imgs))
     assert len(result.segments) == 1
+
+
+def test_clean_segmentation_reports_no_missed_flips():
+    # A hard cut is well above threshold; nothing internal should be flagged.
+    imgs = [page_image(1)] * 6 + [page_image(2)] * 6
+    result = segment_frames(make_frames(imgs))
+    assert result.suspected_missed == []
+
+
+def test_sub_threshold_flip_is_flagged_as_missed():
+    # Build a flip whose per-gap signal lands *between* warn_level and enter, so
+    # it is never classified as a transition but is still a suspicious internal
+    # spike. warn_level = 0.75 * enter = 0.03; enter = 0.04.
+    base = np.zeros((100, 100, 3), dtype=np.uint8)
+    changed = base.copy()
+    changed[:4, :] = 255  # ~4% of pixels flip white -> MAD ~0.04
+    imgs = [base] * 6 + [changed] * 6
+    result = segment_frames(make_frames(imgs), enter_threshold=0.05, exit_threshold=0.03)
+    # The flip peak (~0.04) is below enter (0.05) -> collapses into one segment...
+    assert len(result.segments) == 1
+    # ...but it is loud enough to be reported as a suspected missed flip.
+    assert len(result.suspected_missed) == 1

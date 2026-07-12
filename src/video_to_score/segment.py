@@ -37,6 +37,7 @@ class SegmentResult:
     signal: np.ndarray  # per-gap dissimilarity, length len(frames) - 1
     gap_is_transition: np.ndarray  # bool per gap, length len(frames) - 1
     timestamps: np.ndarray  # per-frame timestamp, length len(frames)
+    suspected_missed: list[float]  # timestamps of likely-missed page flips (see below)
 
 
 def _prep(image: np.ndarray, downscale: int) -> np.ndarray:
@@ -100,13 +101,47 @@ def classify_gaps(
     return states
 
 
+def find_suspected_missed_flips(
+    segments: list[PageSegment],
+    signal: np.ndarray,
+    timestamps: np.ndarray,
+    warn_level: float,
+) -> list[float]:
+    """Timestamps of sub-threshold peaks *inside* a supposedly stable segment.
+
+    When a real page flip registers just below ``enter_threshold`` it is never
+    classified as a transition, so the two pages on either side collapse into one
+    segment and ``select`` silently keeps only one of them -- a page vanishes from
+    the output with no error. This flags the tell-tale: a local maximum in the
+    dissimilarity signal, at/above ``warn_level`` (a fraction of ``enter_threshold``,
+    so well above stable-page noise), sitting *within* a kept segment rather than
+    on its boundary.
+    """
+    n = len(signal)
+    flagged: list[float] = []
+    for seg in segments:
+        run = seg.frame_indices
+        # Internal gaps of this run are indices run[0] .. run[-1]-1; the boundary
+        # gaps (already transitions) are excluded by construction.
+        for g in range(run[0], run[-1]):
+            value = float(signal[g])
+            if value < warn_level:
+                continue
+            left = float(signal[g - 1]) if g > 0 else -1.0
+            right = float(signal[g + 1]) if g + 1 < n else -1.0
+            if value >= left and value >= right:  # local maximum
+                flagged.append(float(timestamps[g + 1]))
+    return flagged
+
+
 def segment_frames(
     frames: list[Frame],
     method: str = METHOD_MAD,
-    enter_threshold: float = 0.06,
+    enter_threshold: float = 0.045,
     exit_threshold: float = 0.03,
     min_stable_sec: float = 1.0,
     downscale: int = 128,
+    warn_fraction: float = 0.75,
 ) -> SegmentResult:
     """Group ``frames`` into stable page segments.
 
@@ -118,6 +153,9 @@ def segment_frames(
         min_stable_sec: Minimum wall-clock duration for a run to count as a page.
             Filters out the short fragments produced during a multi-gap fade.
         downscale: Longest-edge size used when comparing frames.
+        warn_fraction: Fraction of ``enter_threshold`` at/above which an *internal*
+            signal peak is reported as a suspected missed flip (see
+            :func:`find_suspected_missed_flips`).
 
     Returns:
         A :class:`SegmentResult` with the page segments and the raw signals.
@@ -126,10 +164,10 @@ def segment_frames(
     signal = compute_signal(frames, method=method, downscale=downscale)
 
     if len(frames) == 0:
-        return SegmentResult([], signal, np.empty(0, dtype=bool), timestamps)
+        return SegmentResult([], signal, np.empty(0, dtype=bool), timestamps, [])
     if len(frames) == 1:
         seg = PageSegment(timestamps[0], timestamps[0], [0])
-        return SegmentResult([seg], signal, np.empty(0, dtype=bool), timestamps)
+        return SegmentResult([seg], signal, np.empty(0, dtype=bool), timestamps, [])
 
     gap_is_transition = classify_gaps(signal, enter_threshold, exit_threshold)
 
@@ -153,4 +191,7 @@ def segment_frames(
         if len(runs) == 1 or end_ts - start_ts >= min_stable_sec:
             segments.append(PageSegment(start_ts, end_ts, run))
 
-    return SegmentResult(segments, signal, gap_is_transition, timestamps)
+    suspected_missed = find_suspected_missed_flips(
+        segments, signal, timestamps, warn_fraction * enter_threshold
+    )
+    return SegmentResult(segments, signal, gap_is_transition, timestamps, suspected_missed)

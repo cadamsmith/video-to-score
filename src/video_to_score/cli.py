@@ -51,7 +51,7 @@ def run(
     start: float | None = None,
     end: float | None = None,
     method: str = "mad",
-    enter_threshold: float = 0.06,
+    enter_threshold: float = 0.045,
     exit_threshold: float = 0.03,
     min_stable_sec: float = 1.0,
     no_crop: bool = False,
@@ -80,6 +80,18 @@ def run(
         min_stable_sec=min_stable_sec,
     )
     log(f"      {len(result.segments)} page segments")
+
+    if result.suspected_missed:
+        # Not gated by --quiet: a missed flip means a page is silently absent from
+        # the output, which is worth flagging even in a quiet run.
+        at = ", ".join(f"{t:.1f}s" for t in result.suspected_missed)
+        print(
+            f"      warning: {len(result.suspected_missed)} possible missed page "
+            f"flip(s) at {at} -- the signal spiked just below --threshold "
+            f"({enter_threshold}); a page may be missing. Lower --threshold or raise "
+            f"--fps and re-run, or use --debug to inspect debug/signal.png.",
+            file=sys.stderr,
+        )
 
     if debug_dir is not None:
         from .debug import dump_debug
@@ -134,8 +146,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--threshold",
         dest="enter_threshold",
         type=float,
-        default=0.06,
-        help="dissimilarity at/above which a page transition begins (default: 0.06)",
+        default=0.045,
+        help="dissimilarity at/above which a page transition begins (default: 0.045)",
     )
     parser.add_argument(
         "--exit-threshold",
