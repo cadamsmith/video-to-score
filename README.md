@@ -72,6 +72,7 @@ MP4 -> [1] extract -> [2] segment -> [3] select -> [4] dedup -> [5] crop -> [6] 
 ## development
 
 ```bash
-uv run pytest      # unit tests (synthetic frames per stage)
-uv run ruff check  # lint
+uv run pytest              # unit tests (synthetic frames per stage)
+uv run ruff check          # lint
+uv run pre-commit install  # lint + format on every commit (one-time setup)
 ```
