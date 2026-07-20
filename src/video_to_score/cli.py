@@ -4,7 +4,7 @@
 
 Runs the linear pipeline end to end:
 
-    extract -> segment -> select -> dedup -> crop -> assemble
+    extract -> segment -> select -> filter -> dedup -> crop -> assemble
 
 ``--start``/``--end`` let the user manually skip non-notation intros/outros (title
 cards, talking-head intros, bumpers) in place of auto-detecting the first page of
@@ -19,9 +19,10 @@ import sys
 from pathlib import Path
 
 from .assemble import assemble_pdf
-from .crop import crop_pages
+from .crop import crop_pages, split_pages
 from .dedup import dedup_pages
 from .extract import extract_frames
+from .filter import drop_non_pages
 from .segment import segment_frames
 from .select import select_pages
 
@@ -65,13 +66,13 @@ def run(
         if verbose:
             print(msg, file=sys.stderr)
 
-    log(f"[1/6] extract: decoding {input_path} at {fps} fps")
+    log(f"[1/7] extract: decoding {input_path} at {fps} fps")
     frames = extract_frames(input_path, fps=fps, start=start, end=end)
     log(f"      {len(frames)} frames sampled")
     if not frames:
         raise SystemExit("no frames extracted; check the input and --start/--end window")
 
-    log("[2/6] segment: detecting page transitions")
+    log("[2/7] segment: detecting page transitions")
     result = segment_frames(
         frames,
         method=method,
@@ -99,21 +100,30 @@ def run(
         out = dump_debug(result, frames, debug_dir, enter_threshold, exit_threshold)
         log(f"      debug dump written to {out}")
 
-    log("[3/6] select: choosing the sharpest frame per page")
+    log("[3/7] select: choosing the sharpest frame per page")
     pages = select_pages(result.segments, frames)
 
-    log("[4/6] dedup: dropping repeated pages")
+    log("[4/7] filter: dropping frames that aren't sheet music")
+    kept = drop_non_pages(pages)
+    if len(kept) < len(pages):
+        log(f"      dropped {len(pages) - len(kept)} non-page frame(s)")
+    pages = kept
+
+    log("[5/7] dedup: dropping repeated pages")
     pages = dedup_pages(pages)
     log(f"      {len(pages)} distinct pages")
 
     if no_crop:
-        log("[5/6] crop: skipped (--no-crop)")
+        log("[6/7] crop: skipped (--no-crop)")
     else:
-        log("[5/6] crop: isolating the notation region")
+        log("[6/7] crop: isolating the notation region and splitting into systems")
         pages = crop_pages(pages)
+        pages = split_pages(pages)
+        log(f"      {len(pages)} systems")
 
     cap = "auto" if max_rows_per_page is None else f"<={max_rows_per_page}"
-    log(f"[6/6] assemble: writing {output_path} ({cap} strips/page, portrait)")
+    unit = "systems" if not no_crop else "strips"
+    log(f"[7/7] assemble: writing {output_path} ({cap} {unit}/page, portrait)")
     return assemble_pdf(pages, output_path, max_rows_per_page=max_rows_per_page)
 
 

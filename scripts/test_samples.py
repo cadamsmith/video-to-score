@@ -7,7 +7,7 @@ in `samples/manifest.toml`, then:
     uv run python scripts/test_samples.py
 
 For every sample it runs the real pipeline in-process (extract -> segment ->
-select -> dedup -> crop -> assemble), writes the assembled score to
+select -> filter -> dedup -> crop -> assemble), writes the assembled score to
 `samples/<name>.pdf` next to the MP4, then compares the number of distinct pages
 against the manifest's `expected_pages`. It also reports the raw segment count and
 any suspected missed page flips, so a FAIL doubles as a tuning signal:
@@ -36,6 +36,7 @@ from video_to_score.cli import parse_timecode  # noqa: E402
 from video_to_score.crop import crop_pages  # noqa: E402
 from video_to_score.dedup import dedup_pages  # noqa: E402
 from video_to_score.extract import extract_frames  # noqa: E402
+from video_to_score.filter import drop_non_pages  # noqa: E402
 from video_to_score.segment import segment_frames  # noqa: E402
 from video_to_score.select import select_pages  # noqa: E402
 
@@ -55,6 +56,7 @@ class Result:
     distinct: int
     segments: int
     suspected_missed: list[float]
+    non_pages: int = 0
     error: str | None = None
     pdf_error: str | None = None
 
@@ -103,7 +105,9 @@ def run_sample(spec: dict) -> Result:
             exit_threshold=spec.get("exit_threshold", 0.03),
             min_stable_sec=spec.get("min_stable_sec", 1.0),
         )
-        pages = dedup_pages(select_pages(result.segments, frames))
+        selected = select_pages(result.segments, frames)
+        kept = drop_non_pages(selected)
+        pages = dedup_pages(kept)
     except Exception as exc:  # noqa: BLE001 - report any failure per-sample, keep going
         return Result(name, spec["expected_pages"], 0, 0, [], error=str(exc))
 
@@ -122,6 +126,7 @@ def run_sample(spec: dict) -> Result:
         distinct=len(pages),
         segments=len(result.segments),
         suspected_missed=list(result.suspected_missed),
+        non_pages=len(selected) - len(kept),
         pdf_error=pdf_error,
     )
 
@@ -151,8 +156,11 @@ def main() -> int:
             print(f"{tag:<4} {r.name:<{width}}  {r.expected:>8} {'--':>4} {'--':>4}  {r.error}")
             continue
         notes = []
-        if r.distinct < r.segments:
-            notes.append(f"dedup dropped {r.segments - r.distinct}")
+        if r.non_pages:
+            notes.append(f"dropped {r.non_pages} non-page frame(s)")
+        deduped = r.segments - r.non_pages - r.distinct
+        if deduped > 0:
+            notes.append(f"dedup dropped {deduped}")
         if r.suspected_missed:
             at = ", ".join(f"{t:.1f}s" for t in r.suspected_missed)
             notes.append(f"suspected missed flip(s) at {at}")

@@ -1,12 +1,12 @@
 """[6] assemble - pages -> PDF.
 
-The captured pages are wide landscape strips (a couple of systems each), but real
-sheet music reads as a vertical page. So we stack several strips per portrait
-page. Rather than a fixed strips-per-page count, we pack by resolution: scale each
-strip to the page width, then greedily fill a portrait page with as many strips
-(in timestamp order) as fit its height before starting the next page. A short,
-wide strip takes little vertical room, so more fit; a tall strip takes more, so
-fewer do. Every strip keeps its natural proportions, and the packing count falls
+The inputs are wide landscape strips -- individual systems once ``crop`` has split
+them -- but real sheet music reads as a vertical page. So we stack several per
+portrait page. Rather than a fixed strips-per-page count, we pack by resolution:
+scale each strip to the page width, then greedily fill a portrait page with as many
+strips (in timestamp order) as fit its height before starting the next page. A
+short, wide strip takes little vertical room, so more fit; a tall strip takes more,
+so fewer do. Every strip keeps its natural proportions, and the packing count falls
 out of the strip aspect ratios instead of being hard-coded. ``img2pdf`` embeds
 the result losslessly.
 """
@@ -24,6 +24,9 @@ from .types import Page
 # Portrait page shape as width / height (US Letter, 8.5 x 11).
 LETTER_ASPECT = 8.5 / 11.0
 
+# White border kept clear on every page edge, as a fraction of the widest strip.
+MARGIN_FRAC = 0.04
+
 
 def _resize_to_page(image: np.ndarray, page_w: int, page_h: int) -> np.ndarray:
     """Scale ``image`` to fill the page width without exceeding the page height."""
@@ -40,17 +43,21 @@ def stack_pages(
     pages: list[Page],
     max_rows_per_page: int | None = None,
     page_aspect: float = LETTER_ASPECT,
+    margin_frac: float = MARGIN_FRAC,
 ) -> list[np.ndarray]:
     """Pack strips onto portrait canvases, fitting as many per page as resolution allows.
 
-    Each strip is scaled to the page width, then strips are placed onto portrait
-    pages in order, filling a page until the next strip would overflow its height.
+    Each strip is scaled to the content width (the page minus its side margins),
+    then strips are placed onto portrait pages in order, filling a page until the
+    next strip would overflow the content height.
 
     Args:
         pages: Strips in timestamp order.
         max_rows_per_page: Optional cap on strips per page. ``None`` fits as many
             as the strip heights allow; an int is an upper bound on top of that.
         page_aspect: Portrait page width / height (< 1 is taller than wide).
+        margin_frac: White border kept clear on every page edge, as a fraction of
+            the widest strip. ``0`` runs content edge to edge.
 
     Returns:
         One white BGR canvas per output page. Every strip keeps its natural
@@ -60,13 +67,19 @@ def stack_pages(
         return []
     if max_rows_per_page is not None and max_rows_per_page < 1:
         raise ValueError(f"max_rows_per_page must be >= 1, got {max_rows_per_page}")
+    if not 0 <= margin_frac < 0.5:
+        raise ValueError(f"margin_frac must be in [0, 0.5), got {margin_frac}")
 
-    # Page dimensions are derived from the widest strip so nothing is upscaled
-    # past its capture resolution; height follows from the portrait aspect.
-    page_w = max(p.image.shape[1] for p in pages)
+    # Content width is the widest strip so nothing is upscaled past its capture
+    # resolution; the margin sits outside it and the page grows to hold both. Page
+    # height follows from the portrait aspect, and its margins inset the content.
+    content_w = max(p.image.shape[1] for p in pages)
+    margin = round(margin_frac * content_w)
+    page_w = content_w + 2 * margin
     page_h = max(1, round(page_w / page_aspect))
+    content_h = max(1, page_h - 2 * margin)
 
-    resized = [_resize_to_page(p.image, page_w, page_h) for p in pages]
+    resized = [_resize_to_page(p.image, content_w, content_h) for p in pages]
 
     # First-fit in timestamp order: never reorder (strips are systems in reading
     # order), just decide where each page break falls.
@@ -76,7 +89,7 @@ def stack_pages(
     for strip in resized:
         strip_h = strip.shape[0]
         capped = max_rows_per_page is not None and len(current) >= max_rows_per_page
-        if current and (current_h + strip_h > page_h or capped):
+        if current and (current_h + strip_h > content_h or capped):
             groups.append(current)
             current, current_h = [], 0
         current.append(strip)
@@ -87,14 +100,14 @@ def stack_pages(
     canvases: list[np.ndarray] = []
     for group in groups:
         canvas = np.full((page_h, page_w, 3), 255, dtype=np.uint8)
-        content_h = sum(strip.shape[0] for strip in group)
-        # Share the leftover space as equal gaps above, between, and below strips.
-        gap = max(0, page_h - content_h) / (len(group) + 1)
-        y = gap
+        used_h = sum(strip.shape[0] for strip in group)
+        # Share the leftover content space as equal gaps above, between, and below.
+        gap = max(0, content_h - used_h) / (len(group) + 1)
+        y = margin + gap
         for strip in group:
             new_h, new_w = strip.shape[:2]
-            x0 = (page_w - new_w) // 2
-            y0 = min(round(y), page_h - new_h)  # clamp against rounding overflow
+            x0 = margin + (content_w - new_w) // 2
+            y0 = min(round(y), page_h - margin - new_h)  # clamp against rounding overflow
             canvas[y0 : y0 + new_h, x0 : x0 + new_w] = strip
             y += new_h + gap
         canvases.append(canvas)

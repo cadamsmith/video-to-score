@@ -9,6 +9,7 @@ from conftest import blur, make_frames, page_image
 from video_to_score.assemble import assemble_pdf
 from video_to_score.crop import crop_page, find_page_bbox
 from video_to_score.dedup import dedup_pages
+from video_to_score.filter import drop_non_pages, is_paper_page
 from video_to_score.segment import PageSegment
 from video_to_score.select import focus_measure, select_page
 from video_to_score.types import Page
@@ -42,6 +43,31 @@ def test_dedup_preserves_order():
     assert [p.timestamp for p in kept] == [0.0, 1.0]
 
 
+def test_filter_keeps_paper_drops_dark_card():
+    # A bright page survives; a dark outro card (a few glowing pixels on black) does not.
+    page = Page(page_image(1), 0.0)  # white background, sparse ink
+    card = np.zeros((90, 120, 3), np.uint8)
+    card[42:48, 10:110] = 220  # a thin bright "THANK YOU" strip on black (~6% bright)
+    assert is_paper_page(page.image)
+    assert not is_paper_page(card)
+
+
+def test_filter_keeps_letterboxed_page():
+    # A half-scrolled page: a bright paper band fills the middle, black letterbox
+    # above and below. Overall brightness is low, but the paper band is ample, so
+    # gating on paper *fraction* (not median brightness) keeps it.
+    frame = np.zeros((90, 120, 3), np.uint8)
+    frame[30:70, :] = 235  # ~44% of the frame is bright paper
+    assert is_paper_page(frame)
+
+
+def test_filter_drops_non_pages_preserving_order():
+    dark = np.zeros((90, 120, 3), np.uint8)
+    pages = [Page(page_image(1), 0.0), Page(dark, 1.0), Page(page_image(2), 2.0)]
+    kept = drop_non_pages(pages)
+    assert [p.timestamp for p in kept] == [0.0, 2.0]
+
+
 def test_crop_isolates_bright_band():
     # Dark canvas with a bright, near-full-width page band offset vertically.
     canvas = np.full((200, 200, 3), 20, dtype=np.uint8)
@@ -72,6 +98,57 @@ def test_crop_page_shrinks_image():
     assert cropped.image.shape[0] < 200 and cropped.image.shape[1] < 200
 
 
+def _strip_with_bands(bands: list[tuple[int, int]], height: int = 400) -> np.ndarray:
+    """White strip with black ink filling each ``(y0, y1)`` row band (full width)."""
+    img = np.full((height, 200, 3), 255, dtype=np.uint8)
+    for y0, y1 in bands:
+        img[y0:y1, 10:190] = 0
+    return img
+
+
+def test_split_systems_separates_two_systems():
+    from video_to_score.crop import split_systems
+
+    # Two ink bands with a wide whitespace gutter -> two system pages.
+    strip = Page(_strip_with_bands([(40, 150), (250, 360)]), timestamp=7.0)
+    systems = split_systems(strip)
+    assert len(systems) == 2
+    assert all(s.timestamp == 7.0 for s in systems)  # order/timestamp preserved
+    # Each system is shorter than the whole strip (the gutter was removed).
+    assert all(s.image.shape[0] < 400 for s in systems)
+
+
+def test_split_systems_folds_label_into_system_below():
+    from video_to_score.crop import split_systems
+
+    # A thin label row (a chord-symbol line) above a full system belongs *to* that
+    # system, not on its own -- so the strip yields one unit, not two.
+    strip = Page(_strip_with_bands([(30, 45), (120, 300)]), timestamp=1.0)
+    systems = split_systems(strip)
+    assert len(systems) == 1
+    assert systems[0].image.shape[0] >= 300 - 45  # spans the label through the system
+
+
+def test_split_systems_single_band_not_split():
+    from video_to_score.crop import split_systems
+
+    strip = Page(_strip_with_bands([(100, 300)]), timestamp=2.0)
+    systems = split_systems(strip)
+    assert len(systems) == 1
+
+
+def test_split_pages_flattens_in_order():
+    from video_to_score.crop import split_pages
+
+    strips = [
+        Page(_strip_with_bands([(40, 150), (250, 360)]), timestamp=0.0),
+        Page(_strip_with_bands([(40, 150), (250, 360)]), timestamp=5.0),
+    ]
+    systems = split_pages(strips)
+    assert len(systems) == 4
+    assert [s.timestamp for s in systems] == [0.0, 0.0, 5.0, 5.0]
+
+
 def test_assemble_packs_by_resolution(tmp_path):
     from video_to_score.assemble import stack_pages
 
@@ -100,6 +177,18 @@ def test_assemble_max_rows_per_page_caps(tmp_path):
     strips = [Page(np.full((50, 200, 3), 255, np.uint8), float(i)) for i in range(6)]
     canvases = stack_pages(strips, max_rows_per_page=2)
     assert len(canvases) == 3  # 6 strips, capped at 2 per page
+
+
+def test_assemble_leaves_page_margin(tmp_path):
+    from video_to_score.assemble import stack_pages
+
+    # A strip whose content fills its width should not touch any page edge:
+    # every border row/column stays white.
+    strip = np.zeros((60, 200, 3), np.uint8)  # all-black content
+    canvas = stack_pages([Page(strip, 0.0)], margin_frac=0.05)[0]
+    h, w = canvas.shape[:2]
+    assert (canvas[0] == 255).all() and (canvas[h - 1] == 255).all()  # top/bottom
+    assert (canvas[:, 0] == 255).all() and (canvas[:, w - 1] == 255).all()  # sides
 
 
 def test_assemble_writes_pdf(tmp_path):
